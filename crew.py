@@ -1,3 +1,4 @@
+import os
 from crewai import Task, Crew, Process, LLM
 from agents.dev_agent import create_dev_agent
 from agents.marketing_agent import create_marketing_agent
@@ -18,13 +19,17 @@ CONTEXT_MAP = {
     "default": DEFAULT_CONTEXT,
 }
 
-claude_llm = LLM(model="claude-sonnet-4-5", max_tokens=4096)
-
 def run_agent(agent_type: str, message: str, project: str = "ironroad") -> str:
     context = CONTEXT_MAP.get(project, DEFAULT_CONTEXT)
     create_agent = AGENT_MAP.get(agent_type)
     if not create_agent:
         return f"Unknown agent type: {agent_type}. Choose from: {list(AGENT_MAP.keys())}"
+
+    claude_llm = LLM(
+        model="claude-sonnet-4-5",
+        max_tokens=4096,
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+    )
 
     agent = create_agent(context=context)
     agent.llm = claude_llm
