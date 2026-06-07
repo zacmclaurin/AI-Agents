@@ -20,6 +20,12 @@ CONTEXT_MAP = {
 }
 
 def run_agent(agent_type: str, message: str, project: str = "ironroad") -> str:
+    # Debug: print all ANTHROPIC-related env vars
+    anthropic_vars = {k: v for k, v in os.environ.items() if "ANTHROPIC" in k}
+    print(f"[DEBUG] ANTHROPIC env vars: {anthropic_vars}")
+
+    os.environ["ANTHROPIC_API_KEY"] = os.environ.get("ANTHROPIC_API_KEY", "")
+
     context = CONTEXT_MAP.get(project, DEFAULT_CONTEXT)
     create_agent = AGENT_MAP.get(agent_type)
     if not create_agent:
@@ -28,7 +34,7 @@ def run_agent(agent_type: str, message: str, project: str = "ironroad") -> str:
     claude_llm = LLM(
         model="claude-sonnet-4-5",
         max_tokens=4096,
-        api_key=os.environ["ANTHROPIC_API_KEY"],
+        api_key=os.environ.get("ANTHROPIC_API_KEY"),
     )
 
     agent = create_agent(context=context)
