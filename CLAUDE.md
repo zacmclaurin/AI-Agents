@@ -5,6 +5,14 @@ A reusable multi-agent AI framework powered by CrewAI and Claude.
 Four agents: dev, marketing, business, research.
 FastAPI backend + web UI to chat with any agent.
 
+## Environment variables
+Add these to your `.env` file:
+
+| Variable            | Required | Description                                      |
+|---------------------|----------|--------------------------------------------------|
+| `ANTHROPIC_API_KEY` | Yes      | Your Anthropic API key                           |
+| `GITHUB_TOKEN`      | Yes*     | GitHub personal access token with `repo` scope. Required for Dev agent GitHub tools (read, write, push). |
+
 ## Running the server
 cd C:\Users\zzac0\AI-Agents
 python -m venv venv
