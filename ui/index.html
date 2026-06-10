@@ -107,6 +107,7 @@
       align-items: center;
       gap: 7px;
       padding: 8px 16px;
+      min-height: 44px;
       border-radius: var(--radius);
       border: 1px solid var(--border);
       background: var(--surface);
@@ -115,6 +116,7 @@
       font-weight: 500;
       cursor: pointer;
       white-space: nowrap;
+      touch-action: manipulation;
       transition: color 0.15s, border-color 0.15s, background 0.15s;
       user-select: none;
     }
@@ -129,6 +131,7 @@
     /* ── Messages ── */
     #messages {
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
       padding: 24px;
       display: flex;
       flex-direction: column;
@@ -157,16 +160,18 @@
       line-height: 1.65;
       white-space: pre-wrap;
       word-break: break-word;
+      overflow-wrap: break-word;
       font-size: 14px;
+      min-width: 0;
     }
 
-    .msg.user { align-self: flex-end; align-items: flex-end; max-width: 80%; }
+    .msg.user { align-self: flex-end; align-items: flex-end; max-width: 80%; min-width: 0; }
     .msg.user .msg-bubble {
       background: var(--red);
       border-radius: var(--radius) var(--radius) 2px var(--radius);
     }
 
-    .msg.agent { align-self: flex-start; align-items: flex-start; max-width: 90%; }
+    .msg.agent { align-self: flex-start; align-items: flex-start; max-width: 90%; min-width: 0; }
     .msg.agent .msg-bubble {
       background: var(--surface2);
       border: 1px solid var(--border);
@@ -188,6 +193,8 @@
       border-radius: 6px;
       padding: 12px 14px;
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      max-width: 100%;
       margin-top: 8px;
       font-size: 12.5px;
       line-height: 1.5;
@@ -264,14 +271,15 @@
       background: var(--red);
       color: #fff;
       border: none;
-      width: 42px;
-      height: 42px;
+      width: 44px;
+      height: 44px;
       border-radius: var(--radius);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
+      touch-action: manipulation;
       transition: background 0.15s, opacity 0.15s;
     }
     #send:hover:not(:disabled) { background: #a93226; }
@@ -282,14 +290,15 @@
       background: var(--surface2);
       border: 1px solid var(--border);
       color: var(--muted);
-      width: 30px;
-      height: 30px;
+      min-width: 44px;
+      min-height: 44px;
       border-radius: 6px;
       cursor: pointer;
       font-size: 16px;
       display: flex;
       align-items: center;
       justify-content: center;
+      touch-action: manipulation;
       transition: color 0.15s, border-color 0.15s;
     }
     #new-session:hover { color: var(--text); border-color: #444; }
@@ -314,6 +323,7 @@
       font-size: 12px;
       color: var(--muted);
       font-family: "SF Mono", "Fira Code", monospace;
+      word-break: break-all;
     }
     .github-push-btn {
       align-self: flex-start;
@@ -321,14 +331,29 @@
       color: #fff;
       border: none;
       padding: 7px 14px;
+      min-height: 44px;
       border-radius: 6px;
       font-size: 12px;
       font-weight: 600;
       cursor: pointer;
+      touch-action: manipulation;
       transition: background 0.15s, opacity 0.15s;
     }
     .github-push-btn:hover:not(:disabled) { background: #3a8a3a; }
     .github-push-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    @media (max-width: 480px) {
+      header { padding: 12px 14px 10px; gap: 8px; }
+      header h1 { font-size: 15px; }
+      .project-wrap label { display: none; }
+      .tabs { padding: 10px 12px; gap: 4px; }
+      .tab { padding: 8px 12px; font-size: 12px; }
+      #messages { padding: 14px 12px; gap: 14px; }
+      .input-bar { padding: 10px 12px 14px; gap: 8px; }
+      .msg.user  { max-width: 92%; }
+      .msg.agent { max-width: 98%; }
+      .msg-bubble { padding: 10px 13px; font-size: 13px; }
+    }
   </style>
 </head>
 <body>
@@ -385,10 +410,21 @@
 </div>
 
 <script>
+  // ── localStorage helpers — safe in iOS Safari private browsing ──
+  function lsGet(key) {
+    try { return localStorage.getItem(key); } catch { return null; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, val); } catch { /* private browsing blocks writes */ }
+  }
+  function lsDel(key) {
+    try { localStorage.removeItem(key); } catch { /* ignore */ }
+  }
+
   // ── Session ID — resolved before anything else runs ──
   const SESSION_KEY = 'agentHQ_sessionId';
-  let sessionId = localStorage.getItem(SESSION_KEY) || crypto.randomUUID();
-  localStorage.setItem(SESSION_KEY, sessionId);
+  let sessionId = lsGet(SESSION_KEY) || crypto.randomUUID();
+  lsSet(SESSION_KEY, sessionId);
   console.log('[AgentHQ] session_id on load:', sessionId);
 
   const messagesEl  = document.getElementById('messages');
@@ -410,7 +446,7 @@
 
   function resetSession() {
     sessionId = crypto.randomUUID();
-    localStorage.setItem(SESSION_KEY, sessionId);
+    lsSet(SESSION_KEY, sessionId);
     console.log('[AgentHQ] new session started:', sessionId);
     messagesEl.innerHTML = '';
     const empty = document.createElement('div');
@@ -435,13 +471,14 @@
   });
 
   function updateEmptyLabel() {
-    emptyState.querySelector('p').innerHTML =
-      `Ask the <strong>${agentLabels[activeAgent]}</strong> anything.`;
+    const p = emptyState?.querySelector('p');
+    if (p) p.innerHTML = `Ask the <strong>${agentLabels[activeAgent]}</strong> anything.`;
   }
 
   // ── Helpers ──
   function escapeHtml(str) {
-    return str
+    if (str == null) return '';
+    return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;');
@@ -519,8 +556,11 @@
   }
 
   function formatResponse(text) {
-    if (text == null) return '<em style="opacity:0.5">(empty response)</em>';
+    if (text == null || text === undefined || text === '') {
+      return '<em style="opacity:0.5">(empty response)</em>';
+    }
     text = String(text);
+    if (!text.trim()) return '<em style="opacity:0.5">(empty response)</em>';
 
     console.log('[AgentHQ] formatResponse called, text length:', text.length);
 
@@ -625,6 +665,8 @@
   // ── Poll job status until complete or error ──
   function pollStatus(jobId, agentType) {
     let cancelled = false;
+    let networkErrors = 0;
+    const MAX_RETRIES = 4;
 
     async function poll() {
       if (cancelled) return;
@@ -632,28 +674,31 @@
         const res = await fetch(`/status/${jobId}`);
         if (!res.ok) throw new Error(`Status check failed: ${res.status}`);
         const job = await res.json();
+        networkErrors = 0; // reset on success
 
         console.log('[AgentHQ] poll response:', JSON.stringify(job));
         if (job.status === 'complete') {
           removeTyping();
           addMessage('agent', job.result ?? '(no result returned)', agentLabels[agentType]);
           sendBtn.disabled = false;
-          inputEl.focus();
         } else if (job.status === 'error') {
           removeTyping();
           addMessage('agent', `Agent error: ${job.error}`, 'System');
           sendBtn.disabled = false;
-          inputEl.focus();
         } else {
           // still pending — schedule next poll
           setTimeout(poll, 3000);
         }
       } catch (err) {
-        if (!cancelled) {
+        if (cancelled) return;
+        networkErrors++;
+        if (networkErrors <= MAX_RETRIES) {
+          console.warn(`[AgentHQ] poll network error (attempt ${networkErrors}/${MAX_RETRIES}):`, err.message);
+          setTimeout(poll, 3000 * networkErrors); // back off on each retry
+        } else {
           removeTyping();
-          addMessage('agent', `Network error: ${err.message}`, 'System');
+          addMessage('agent', `Could not reach the server after ${MAX_RETRIES} attempts. Check your connection and try again.`, 'System');
           sendBtn.disabled = false;
-          inputEl.focus();
         }
       }
     }
@@ -671,7 +716,7 @@
 
       addMessage('user', message);
       inputEl.value = '';
-      inputEl.style.height = 'auto';
+      resizeTextarea();
       sendBtn.disabled = true;
       addTyping();
 
@@ -725,7 +770,7 @@
 
       if (data.session_id) {
         sessionId = data.session_id;
-        localStorage.setItem(SESSION_KEY, sessionId);
+        lsSet(SESSION_KEY, sessionId);
       }
 
       if (!data.job_id) {
@@ -750,6 +795,12 @@
   }
 
   sendBtn.addEventListener('click', send);
+  // Touch handler fires before the 300ms-delayed click on mobile; preventDefault
+  // stops the redundant click so send() is only called once per tap.
+  sendBtn.addEventListener('touchend', e => {
+    e.preventDefault();
+    send();
+  }, { passive: false });
 
   inputEl.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -758,10 +809,12 @@
     }
   });
 
-  inputEl.addEventListener('input', () => {
-    inputEl.style.height = 'auto';
+  function resizeTextarea() {
+    // Set to 0 first so scrollHeight shrinks when text is deleted (required on iOS Safari)
+    inputEl.style.height = '0px';
     inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + 'px';
-  });
+  }
+  inputEl.addEventListener('input', resizeTextarea);
 
   // ── Load projects from API ──
   fetch('/projects')
