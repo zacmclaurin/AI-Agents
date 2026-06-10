@@ -451,36 +451,79 @@
   // embedding raw JSON inside HTML attributes.
   const _githubPayloads = new Map();
 
+  function buildGithubCard(jsonStr) {
+    const trimmed = jsonStr.trim();
+    const id = `gh-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    try {
+      const payload = JSON.parse(trimmed);
+      _githubPayloads.set(id, payload);
+      console.log('[AgentHQ] github-write payload parsed OK:', payload);
+      const label = `${escapeHtml(payload.file_path || '(unknown)')}  →  ${escapeHtml(payload.repo || '(unknown)')}`;
+      return `<div class="github-push-card">
+        <div class="github-push-label">⬆ GitHub Write</div>
+        <div class="github-push-info">${label}</div>
+        <button class="github-push-btn" data-id="${id}">Push to GitHub</button>
+      </div>`;
+    } catch (e) {
+      console.warn('[AgentHQ] github-write JSON parse failed:', e.message, '| raw:', trimmed);
+      return `<pre><code>${escapeHtml(trimmed)}</code></pre>`;
+    }
+  }
+
+  function extractGithubBlocks(text) {
+    const OPEN_TAG = '```github-write';
+    const CLOSE_TAG = '```';
+    let result = '';
+    let cursor = 0;
+
+    while (cursor < text.length) {
+      const openIdx = text.indexOf(OPEN_TAG, cursor);
+      if (openIdx === -1) {
+        result += text.slice(cursor);
+        break;
+      }
+
+      // Append everything before this block as-is
+      result += text.slice(cursor, openIdx);
+
+      // Skip past the opening tag and any trailing whitespace/newline
+      let contentStart = openIdx + OPEN_TAG.length;
+      while (contentStart < text.length && (text[contentStart] === ' ' || text[contentStart] === '\t' || text[contentStart] === '\r' || text[contentStart] === '\n')) {
+        contentStart++;
+      }
+
+      // Find the closing ```
+      const closeIdx = text.indexOf(CLOSE_TAG, contentStart);
+      if (closeIdx === -1) {
+        // No closing tag — treat the rest as plain text
+        console.warn('[AgentHQ] github-write block opened but never closed');
+        result += text.slice(openIdx);
+        break;
+      }
+
+      const jsonStr = text.slice(contentStart, closeIdx);
+      console.log('[AgentHQ] github-write block detected, JSON length:', jsonStr.length);
+      result += buildGithubCard(jsonStr);
+
+      // Move cursor past the closing ```
+      cursor = closeIdx + CLOSE_TAG.length;
+    }
+
+    return result;
+  }
+
   function formatResponse(text) {
     if (text == null) return '<em style="opacity:0.5">(empty response)</em>';
     text = String(text);
 
-    console.log('[AgentHQ] formatResponse raw text:', text);
+    console.log('[AgentHQ] formatResponse called, text length:', text.length);
 
-    // github-write blocks → push card with button
-    // Pattern is tolerant of spaces, \r\n, or \n after the language tag
-    text = text.replace(/```github-write[ \t]*\r?\n?([\s\S]*?)```/g, (match, json) => {
-      const trimmed = json.trim();
-      console.log('[AgentHQ] github-write block detected. Raw match:', match);
-      console.log('[AgentHQ] github-write JSON to parse:', trimmed);
-      const id = `gh-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      try {
-        const payload = JSON.parse(trimmed);
-        _githubPayloads.set(id, payload);
-        console.log('[AgentHQ] github-write payload parsed OK:', payload);
-        const label = `${escapeHtml(payload.file_path || '(unknown)')}  →  ${escapeHtml(payload.repo || '(unknown)')}`;
-        return `<div class="github-push-card">
-          <div class="github-push-label">⬆ GitHub Write</div>
-          <div class="github-push-info">${label}</div>
-          <button class="github-push-btn" data-id="${id}">Push to GitHub</button>
-        </div>`;
-      } catch (e) {
-        console.warn('[AgentHQ] github-write JSON parse failed:', e.message, '| raw:', trimmed);
-        return `<pre><code>${escapeHtml(trimmed)}</code></pre>`;
-      }
-    });
+    // Extract github-write blocks first using indexOf (safe on large strings)
+    if (text.indexOf('```github-write') !== -1) {
+      text = extractGithubBlocks(text);
+    }
 
-    // Remaining fenced code blocks (generic — runs after github-write so it doesn't steal those)
+    // Remaining fenced code blocks
     text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
       `<pre><code>${escapeHtml(code.trim())}</code></pre>`
     );
