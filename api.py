@@ -57,22 +57,28 @@ def _clear_session(session_id: str) -> None:
         _sessions.pop(session_id, None)
 
 
-async def _run_job(job_id: str, req: "ChatRequest", sid: str, history: list[dict]) -> None:
-    """Background task: run the agent and update the job store when done."""
+def _run_job_sync(job_id: str, agent: str, message: str, project: str, sid: str) -> None:
+    """Runs entirely in a worker thread: load history, run agent, save turn."""
     try:
-        result = await asyncio.to_thread(
-            run_agent, req.agent, req.message, req.project, history
-        )
+        history = _load_history(sid)
+    except Exception as e:
+        print(f"[WARN] Failed to load history for job {job_id}: {e}")
+        history = []
+
+    try:
+        result = run_agent(agent, message, project, history)
         _jobs[job_id]["status"] = "complete"
         _jobs[job_id]["result"] = result
-        try:
-            await asyncio.to_thread(_save_turn, sid, req.agent, req.project, req.message, result)
-        except Exception as e:
-            print(f"[WARN] Failed to save turn for job {job_id}: {e}")
     except Exception as e:
         _jobs[job_id]["status"] = "error"
         _jobs[job_id]["error"] = str(e)
         print(f"[ERROR] Job {job_id} failed: {e}")
+        return
+
+    try:
+        _save_turn(sid, agent, project, message, result)
+    except Exception as e:
+        print(f"[WARN] Failed to save turn for job {job_id}: {e}")
 
 
 class ChatRequest(BaseModel):
@@ -112,15 +118,9 @@ def list_projects():
 
 
 @app.post("/chat", response_model=ChatSubmitResponse)
-async def chat(req: ChatRequest):
+def chat(req: ChatRequest):
     sid = req.session_id or str(uuid.uuid4())
     job_id = str(uuid.uuid4())
-
-    try:
-        history = await asyncio.to_thread(_load_history, sid)
-    except Exception as e:
-        print(f"[WARN] Failed to load history: {e}")
-        history = []
 
     _jobs[job_id] = {
         "status":     "pending",
@@ -131,7 +131,9 @@ async def chat(req: ChatRequest):
         "session_id": sid,
     }
 
-    asyncio.create_task(_run_job(job_id, req, sid, history))
+    asyncio.get_event_loop().run_in_executor(
+        None, _run_job_sync, job_id, req.agent, req.message, req.project, sid
+    )
 
     return ChatSubmitResponse(job_id=job_id, session_id=sid)
 
