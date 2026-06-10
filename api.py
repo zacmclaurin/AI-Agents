@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +24,10 @@ app.add_middleware(
 _memory_available = bool(
     os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY")
 )
+
+# Seconds before a running agent task is cancelled and a 504 is returned.
+# Override via AGENT_TIMEOUT env var.
+AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT", "300"))
 
 # Fallback in-memory store used when Supabase env vars are absent
 _sessions: dict[str, list[dict]] = {}
@@ -83,24 +88,34 @@ def list_projects():
 
 
 @app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest):
+async def chat(req: ChatRequest):
     sid = req.session_id or str(uuid.uuid4())
 
     try:
-        history = _load_history(sid)
+        history = await asyncio.to_thread(_load_history, sid)
     except Exception as e:
         print(f"[WARN] Failed to load history: {e}")
         history = []
 
-    result = run_agent(
-        agent_type=req.agent,
-        message=req.message,
-        project=req.project,
-        history=history,
-    )
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(
+                run_agent,
+                req.agent,
+                req.message,
+                req.project,
+                history,
+            ),
+            timeout=AGENT_TIMEOUT,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=504,
+            detail=f"Agent timed out after {AGENT_TIMEOUT}s. Try a simpler request.",
+        )
 
     try:
-        _save_turn(sid, req.agent, req.project, req.message, result)
+        await asyncio.to_thread(_save_turn, sid, req.agent, req.project, req.message, result)
     except Exception as e:
         print(f"[WARN] Failed to save turn: {e}")
 
