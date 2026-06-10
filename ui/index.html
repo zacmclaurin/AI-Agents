@@ -458,10 +458,16 @@
       const payload = JSON.parse(trimmed);
       _githubPayloads.set(id, payload);
       console.log('[AgentHQ] github-write payload parsed OK:', payload);
-      const label = `${escapeHtml(payload.file_path || '(unknown)')}  →  ${escapeHtml(payload.repo || '(unknown)')}`;
+      const filePath = escapeHtml(payload.file_path || '(unknown)');
+      const repo = escapeHtml(payload.repo || '(unknown)');
+      const isPatch = Array.isArray(payload.changes);
+      const header = isPatch ? '✏ GitHub Patch' : '⬆ GitHub Write';
+      const detail = isPatch
+        ? `${payload.changes.length} change${payload.changes.length === 1 ? '' : 's'} to ${filePath}  →  ${repo}`
+        : `${filePath}  →  ${repo}`;
       return `<div class="github-push-card">
-        <div class="github-push-label">⬆ GitHub Write</div>
-        <div class="github-push-info">${label}</div>
+        <div class="github-push-label">${header}</div>
+        <div class="github-push-info">${detail}</div>
         <button class="github-push-btn" data-id="${id}">Push to GitHub</button>
       </div>`;
     } catch (e) {

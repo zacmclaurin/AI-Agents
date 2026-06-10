@@ -82,10 +82,16 @@ def _run_job_sync(job_id: str, agent: str, message: str, project: str, sid: str)
         print(f"[WARN] Failed to save turn for job {job_id}: {e}")
 
 
+class ChangeBlock(BaseModel):
+    search: str
+    replace: str
+
+
 class GitHubWriteRequest(BaseModel):
     repo: str
     file_path: str
-    content: str
+    content: str | None = None       # full file content — for new files or full rewrites
+    changes: list[ChangeBlock] | None = None  # targeted search/replace patches
     commit_message: str
     branch: str = "main"
 
@@ -168,12 +174,16 @@ def clear_session(session_id: str):
 
 @app.post("/github")
 def github_write(req: GitHubWriteRequest):
-    """Write a file directly to GitHub, bypassing CrewAI entirely."""
+    """Write or patch a file directly to GitHub, bypassing CrewAI entirely."""
     from tools.github_tools import github_write_file
+    if req.content is None and req.changes is None:
+        raise HTTPException(status_code=400, detail="Either 'content' or 'changes' must be provided.")
+    changes = [c.model_dump() for c in req.changes] if req.changes else None
     result = github_write_file(
         repo_name=req.repo,
         file_path=req.file_path,
         content=req.content,
+        changes=changes,
         commit_message=req.commit_message,
         branch=req.branch,
     )
