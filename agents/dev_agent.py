@@ -14,9 +14,24 @@ def create_dev_agent(context: str = "") -> Agent:
 You write concise, production-ready code. You always include file paths,
 explain your reasoning briefly, and flag any gotchas or known issues.
 
-You have direct access to GitHub — you can read files, write files, list
-directory contents, and push commits to any repo you have access to.
-Always confirm the repo name and branch before making writes.
+You have direct access to GitHub — you can read files and list directory
+contents using your tools. For reading, use the tools directly.
+
+When you need to WRITE a file to GitHub, do NOT use the write tools.
+Instead, return the file in this exact fenced block format so the UI
+can push it instantly via the direct GitHub API:
+
+```github-write
+{{
+  "repo": "owner/repo",
+  "file_path": "path/to/file.ts",
+  "content": "full file content here",
+  "commit_message": "short commit message"
+}}
+```
+
+The UI will render a Push to GitHub button for that block. Always include
+the complete file content — never truncate it. One block per file.
 
 When the user asks you to remember something or just states a fact, simply
 acknowledge it in one sentence and do nothing else. Do not provide task

@@ -293,6 +293,42 @@
       transition: color 0.15s, border-color 0.15s;
     }
     #new-session:hover { color: var(--text); border-color: #444; }
+
+    .github-push-card {
+      background: #0f1f0f;
+      border: 1px solid #2a4a2a;
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .github-push-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #4caf50;
+    }
+    .github-push-info {
+      font-size: 12px;
+      color: var(--muted);
+      font-family: "SF Mono", "Fira Code", monospace;
+    }
+    .github-push-btn {
+      align-self: flex-start;
+      background: #2d6a2d;
+      color: #fff;
+      border: none;
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .github-push-btn:hover:not(:disabled) { background: #3a8a3a; }
+    .github-push-btn:disabled { opacity: 0.5; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -411,10 +447,34 @@
       .replace(/>/g, '&gt;');
   }
 
+  // Stores github-write payloads keyed by a generated id so we avoid
+  // embedding raw JSON inside HTML attributes.
+  const _githubPayloads = new Map();
+
   function formatResponse(text) {
     if (text == null) return '<em style="opacity:0.5">(empty response)</em>';
     text = String(text);
-    // Fenced code blocks
+
+    // github-write blocks → push card with button
+    text = text.replace(/```github-write\n?([\s\S]*?)```/g, (_, json) => {
+      const trimmed = json.trim();
+      const id = `gh-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      try {
+        const payload = JSON.parse(trimmed);
+        _githubPayloads.set(id, payload);
+        const label = `${escapeHtml(payload.file_path || '(unknown)')}  →  ${escapeHtml(payload.repo || '(unknown)')}`;
+        return `<div class="github-push-card">
+          <div class="github-push-label">⬆ GitHub Write</div>
+          <div class="github-push-info">${label}</div>
+          <button class="github-push-btn" data-id="${id}">Push to GitHub</button>
+        </div>`;
+      } catch (e) {
+        // Bad JSON — fall back to plain code block
+        return `<pre><code>${escapeHtml(trimmed)}</code></pre>`;
+      }
+    });
+
+    // Remaining fenced code blocks
     text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
       `<pre><code>${escapeHtml(code.trim())}</code></pre>`
     );
@@ -422,10 +482,40 @@
     text = text.replace(/`([^`]+)`/g, (_, code) =>
       `<code>${escapeHtml(code)}</code>`
     );
-    // Escape remaining HTML (non-code parts already plain text)
-    // Split on pre/code tags to avoid double-escaping
     return text;
   }
+
+  // Push-to-GitHub click handler (event delegation on messages container)
+  messagesEl.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.github-push-btn');
+    if (!btn) return;
+    const payload = _githubPayloads.get(btn.dataset.id);
+    if (!payload) return;
+
+    btn.disabled = true;
+    btn.textContent = 'Pushing…';
+
+    try {
+      const res = await fetch('/github', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const raw = await res.text();
+      console.log('[AgentHQ] POST /github status:', res.status, raw);
+      if (res.ok) {
+        btn.textContent = '✓ Pushed';
+        btn.style.background = '#1a5c1a';
+      } else {
+        btn.textContent = '✗ Failed — see console';
+        btn.disabled = false;
+      }
+    } catch (err) {
+      console.error('[AgentHQ] POST /github error:', err);
+      btn.textContent = `✗ ${err.message}`;
+      btn.disabled = false;
+    }
+  });
 
   function addMessage(role, text, agentName) {
     emptyState.style.display = 'none';

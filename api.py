@@ -82,6 +82,14 @@ def _run_job_sync(job_id: str, agent: str, message: str, project: str, sid: str)
         print(f"[WARN] Failed to save turn for job {job_id}: {e}")
 
 
+class GitHubWriteRequest(BaseModel):
+    repo: str
+    file_path: str
+    content: str
+    commit_message: str
+    branch: str = "main"
+
+
 class ChatRequest(BaseModel):
     agent: str
     message: str
@@ -156,6 +164,22 @@ def clear_session(session_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
     return {"cleared": session_id}
+
+
+@app.post("/github")
+def github_write(req: GitHubWriteRequest):
+    """Write a file directly to GitHub, bypassing CrewAI entirely."""
+    from tools.github_tools import github_write_file
+    result = github_write_file(
+        repo_name=req.repo,
+        file_path=req.file_path,
+        content=req.content,
+        commit_message=req.commit_message,
+        branch=req.branch,
+    )
+    if result.startswith("GitHub error") or result.startswith("Error"):
+        raise HTTPException(status_code=500, detail=result)
+    return {"result": result}
 
 
 @app.get("/health")
