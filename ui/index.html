@@ -475,6 +475,46 @@
     document.getElementById('typing')?.remove();
   }
 
+  // ── Poll job status until complete or error ──
+  function pollStatus(jobId, agentType) {
+    let cancelled = false;
+
+    async function poll() {
+      if (cancelled) return;
+      try {
+        const res = await fetch(`/status/${jobId}`);
+        if (!res.ok) throw new Error(`Status check failed: ${res.status}`);
+        const job = await res.json();
+
+        if (job.status === 'complete') {
+          removeTyping();
+          addMessage('agent', job.result, agentLabels[agentType]);
+          sendBtn.disabled = false;
+          inputEl.focus();
+        } else if (job.status === 'error') {
+          removeTyping();
+          addMessage('agent', `Agent error: ${job.error}`, 'System');
+          sendBtn.disabled = false;
+          inputEl.focus();
+        } else {
+          // still pending — schedule next poll
+          setTimeout(poll, 3000);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          removeTyping();
+          addMessage('agent', `Network error: ${err.message}`, 'System');
+          sendBtn.disabled = false;
+          inputEl.focus();
+        }
+      }
+    }
+
+    // First check after 1 s (fast tasks finish quickly), then every 3 s
+    setTimeout(poll, 1000);
+    return () => { cancelled = true; };
+  }
+
   // ── Send ──
   async function send() {
     const message = inputEl.value.trim();
@@ -484,8 +524,7 @@
     inputEl.value = '';
     inputEl.style.height = 'auto';
     sendBtn.disabled = true;
-
-    const typing = addTyping();
+    addTyping();
 
     try {
       const res = await fetch('/chat', {
@@ -499,22 +538,25 @@
         }),
       });
 
-      removeTyping();
-
       if (!res.ok) {
         const err = await res.text();
+        removeTyping();
         addMessage('agent', `Error ${res.status}: ${err}`, 'System');
+        sendBtn.disabled = false;
+        inputEl.focus();
         return;
       }
 
       const data = await res.json();
       sessionId = data.session_id;
       localStorage.setItem(SESSION_KEY, sessionId);
-      addMessage('agent', data.response, agentLabels[data.agent]);
+
+      // Hand off to poller — typing indicator stays until job resolves
+      pollStatus(data.job_id, activeAgent);
+
     } catch (err) {
       removeTyping();
       addMessage('agent', `Network error: ${err.message}`, 'System');
-    } finally {
       sendBtn.disabled = false;
       inputEl.focus();
     }

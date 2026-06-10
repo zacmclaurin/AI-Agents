@@ -25,12 +25,11 @@ _memory_available = bool(
     os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_KEY")
 )
 
-# Seconds before a running agent task is cancelled and a 504 is returned.
-# Override via AGENT_TIMEOUT env var.
-AGENT_TIMEOUT = int(os.getenv("AGENT_TIMEOUT", "300"))
-
 # Fallback in-memory store used when Supabase env vars are absent
 _sessions: dict[str, list[dict]] = {}
+
+# Job store: job_id -> {status, result, error, agent, project, session_id}
+_jobs: dict[str, dict] = {}
 
 
 def _load_history(session_id: str) -> list[dict]:
@@ -58,6 +57,24 @@ def _clear_session(session_id: str) -> None:
         _sessions.pop(session_id, None)
 
 
+async def _run_job(job_id: str, req: "ChatRequest", sid: str, history: list[dict]) -> None:
+    """Background task: run the agent and update the job store when done."""
+    try:
+        result = await asyncio.to_thread(
+            run_agent, req.agent, req.message, req.project, history
+        )
+        _jobs[job_id]["status"] = "complete"
+        _jobs[job_id]["result"] = result
+        try:
+            await asyncio.to_thread(_save_turn, sid, req.agent, req.project, req.message, result)
+        except Exception as e:
+            print(f"[WARN] Failed to save turn for job {job_id}: {e}")
+    except Exception as e:
+        _jobs[job_id]["status"] = "error"
+        _jobs[job_id]["error"] = str(e)
+        print(f"[ERROR] Job {job_id} failed: {e}")
+
+
 class ChatRequest(BaseModel):
     agent: str
     message: str
@@ -65,11 +82,18 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
 
 
-class ChatResponse(BaseModel):
-    response: str
-    agent: str
-    project: str
+class ChatSubmitResponse(BaseModel):
+    job_id: str
     session_id: str
+
+
+class JobStatusResponse(BaseModel):
+    status: str          # "pending" | "complete" | "error"
+    result: str | None = None
+    error: str | None = None
+    agent: str | None = None
+    project: str | None = None
+    session_id: str | None = None
 
 
 @app.get("/")
@@ -87,9 +111,10 @@ def list_projects():
     return {"projects": list(CONTEXT_MAP.keys())}
 
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat", response_model=ChatSubmitResponse)
 async def chat(req: ChatRequest):
     sid = req.session_id or str(uuid.uuid4())
+    job_id = str(uuid.uuid4())
 
     try:
         history = await asyncio.to_thread(_load_history, sid)
@@ -97,29 +122,26 @@ async def chat(req: ChatRequest):
         print(f"[WARN] Failed to load history: {e}")
         history = []
 
-    try:
-        result = await asyncio.wait_for(
-            asyncio.to_thread(
-                run_agent,
-                req.agent,
-                req.message,
-                req.project,
-                history,
-            ),
-            timeout=AGENT_TIMEOUT,
-        )
-    except asyncio.TimeoutError:
-        raise HTTPException(
-            status_code=504,
-            detail=f"Agent timed out after {AGENT_TIMEOUT}s. Try a simpler request.",
-        )
+    _jobs[job_id] = {
+        "status":     "pending",
+        "result":     None,
+        "error":      None,
+        "agent":      req.agent,
+        "project":    req.project,
+        "session_id": sid,
+    }
 
-    try:
-        await asyncio.to_thread(_save_turn, sid, req.agent, req.project, req.message, result)
-    except Exception as e:
-        print(f"[WARN] Failed to save turn: {e}")
+    asyncio.create_task(_run_job(job_id, req, sid, history))
 
-    return ChatResponse(response=result, agent=req.agent, project=req.project, session_id=sid)
+    return ChatSubmitResponse(job_id=job_id, session_id=sid)
+
+
+@app.get("/status/{job_id}", response_model=JobStatusResponse)
+def get_status(job_id: str):
+    job = _jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+    return JobStatusResponse(**job)
 
 
 @app.delete("/session/{session_id}")
@@ -133,9 +155,11 @@ def clear_session(session_id: str):
 
 @app.get("/health")
 def health():
+    pending = sum(1 for j in _jobs.values() if j["status"] == "pending")
     return {
-        "status":           "ok",
-        "key_loaded":       bool(os.getenv("ANTHROPIC_API_KEY")),
-        "memory_backend":   "supabase" if _memory_available else "in-memory",
-        "active_sessions":  len(_sessions) if not _memory_available else None,
+        "status":          "ok",
+        "key_loaded":      bool(os.getenv("ANTHROPIC_API_KEY")),
+        "memory_backend":  "supabase" if _memory_available else "in-memory",
+        "pending_jobs":    pending,
+        "total_jobs":      len(_jobs),
     }
