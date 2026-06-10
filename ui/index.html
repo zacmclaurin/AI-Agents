@@ -349,6 +349,12 @@
 </div>
 
 <script>
+  // ── Session ID — resolved before anything else runs ──
+  const SESSION_KEY = 'agentHQ_sessionId';
+  let sessionId = localStorage.getItem(SESSION_KEY) || crypto.randomUUID();
+  localStorage.setItem(SESSION_KEY, sessionId);
+  console.log('[AgentHQ] session_id on load:', sessionId);
+
   const messagesEl  = document.getElementById('messages');
   const emptyState  = document.getElementById('empty-state');
   const inputEl     = document.getElementById('input');
@@ -365,12 +371,11 @@
   };
 
   let activeAgent = 'dev';
-  let sessionId   = localStorage.getItem('agentHQ_sessionId') || crypto.randomUUID();
-  localStorage.setItem('agentHQ_sessionId', sessionId);
 
   function resetSession() {
     sessionId = crypto.randomUUID();
-    localStorage.setItem('agentHQ_sessionId', sessionId);
+    localStorage.setItem(SESSION_KEY, sessionId);
+    console.log('[AgentHQ] new session started:', sessionId);
     messagesEl.innerHTML = '';
     const empty = document.createElement('div');
     empty.className = 'empty';
@@ -504,6 +509,7 @@
 
       const data = await res.json();
       sessionId = data.session_id;
+      localStorage.setItem(SESSION_KEY, sessionId);
       addMessage('agent', data.response, agentLabels[data.agent]);
     } catch (err) {
       removeTyping();
