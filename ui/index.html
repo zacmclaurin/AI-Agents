@@ -277,6 +277,22 @@
     #send:hover:not(:disabled) { background: #a93226; }
     #send:disabled { opacity: 0.35; cursor: not-allowed; }
     #send svg { width: 18px; height: 18px; fill: #fff; }
+
+    #new-session {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    #new-session:hover { color: var(--text); border-color: #444; }
   </style>
 </head>
 <body>
@@ -294,6 +310,7 @@
         <option value="ironroad">Iron Road</option>
         <option value="default">Default</option>
       </select>
+      <button id="new-session" title="Start new conversation">↺</button>
     </div>
   </header>
 
@@ -332,12 +349,13 @@
 </div>
 
 <script>
-  const messagesEl = document.getElementById('messages');
-  const emptyState = document.getElementById('empty-state');
-  const inputEl   = document.getElementById('input');
-  const sendBtn   = document.getElementById('send');
-  const projectEl = document.getElementById('project-select');
-  const tabs      = document.querySelectorAll('.tab');
+  const messagesEl  = document.getElementById('messages');
+  const emptyState  = document.getElementById('empty-state');
+  const inputEl     = document.getElementById('input');
+  const sendBtn     = document.getElementById('send');
+  const projectEl   = document.getElementById('project-select');
+  const newSessBtn  = document.getElementById('new-session');
+  const tabs        = document.querySelectorAll('.tab');
 
   const agentLabels = {
     dev:       'Dev Agent',
@@ -347,6 +365,20 @@
   };
 
   let activeAgent = 'dev';
+  let sessionId   = crypto.randomUUID();
+
+  function resetSession() {
+    sessionId = crypto.randomUUID();
+    // Clear visible messages, restore empty state
+    messagesEl.innerHTML = '';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.id = 'empty-state';
+    empty.innerHTML = `<div class="empty-icon">🤖</div><p>Ask the <strong>${agentLabels[activeAgent]}</strong> anything.</p>`;
+    messagesEl.appendChild(empty);
+  }
+
+  newSessBtn.addEventListener('click', resetSession);
 
   // ── Tab switching ──
   tabs.forEach(tab => {
@@ -457,6 +489,7 @@
           agent: activeAgent,
           message,
           project: projectEl.value,
+          session_id: sessionId,
         }),
       });
 
@@ -469,6 +502,7 @@
       }
 
       const data = await res.json();
+      sessionId = data.session_id;
       addMessage('agent', data.response, agentLabels[data.agent]);
     } catch (err) {
       removeTyping();

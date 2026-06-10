@@ -19,7 +19,12 @@ CONTEXT_MAP = {
     "default": DEFAULT_CONTEXT,
 }
 
-def run_agent(agent_type: str, message: str, project: str = "ironroad") -> str:
+def run_agent(
+    agent_type: str,
+    message: str,
+    project: str = "ironroad",
+    history: list[dict] | None = None,
+) -> str:
     # Debug: print all ANTHROPIC-related env vars
     anthropic_vars = {k: v for k, v in os.environ.items() if "ANTHROPIC" in k}
     print(f"[DEBUG] ANTHROPIC env vars: {anthropic_vars}")
@@ -37,11 +42,20 @@ def run_agent(agent_type: str, message: str, project: str = "ironroad") -> str:
         api_key=os.environ.get("ANTHROPIC_API_KEY"),
     )
 
+    if history:
+        transcript = "\n".join(
+            f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+            for m in history
+        )
+        full_message = f"Previous conversation:\n{transcript}\n\nUser: {message}"
+    else:
+        full_message = message
+
     agent = create_agent(context=context)
     agent.llm = claude_llm
 
     task = Task(
-        description=message,
+        description=full_message,
         expected_output="A thorough, actionable response.",
         agent=agent,
     )
