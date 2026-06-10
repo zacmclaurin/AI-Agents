@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import uuid
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,9 +132,11 @@ def chat(req: ChatRequest):
         "session_id": sid,
     }
 
-    asyncio.get_event_loop().run_in_executor(
-        None, _run_job_sync, job_id, req.agent, req.message, req.project, sid
-    )
+    threading.Thread(
+        target=_run_job_sync,
+        args=(job_id, req.agent, req.message, req.project, sid),
+        daemon=True,
+    ).start()
 
     return ChatSubmitResponse(job_id=job_id, session_id=sid)
 
