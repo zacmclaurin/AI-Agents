@@ -412,6 +412,8 @@
   }
 
   function formatResponse(text) {
+    if (text == null) return '<em style="opacity:0.5">(empty response)</em>';
+    text = String(text);
     // Fenced code blocks
     text = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) =>
       `<pre><code>${escapeHtml(code.trim())}</code></pre>`
@@ -486,9 +488,10 @@
         if (!res.ok) throw new Error(`Status check failed: ${res.status}`);
         const job = await res.json();
 
+        console.log('[AgentHQ] poll response:', JSON.stringify(job));
         if (job.status === 'complete') {
           removeTyping();
-          addMessage('agent', job.result, agentLabels[agentType]);
+          addMessage('agent', job.result ?? '(no result returned)', agentLabels[agentType]);
           sendBtn.disabled = false;
           inputEl.focus();
         } else if (job.status === 'error') {
