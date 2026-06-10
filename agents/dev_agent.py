@@ -1,5 +1,5 @@
 from crewai import Agent
-from tools.github_tools import GITHUB_TOOLS, handle_github_tool
+from tools.github_tools import GITHUB_TOOLS
 
 def create_dev_agent(context: str = "") -> Agent:
     return Agent(
