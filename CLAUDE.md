@@ -10,8 +10,10 @@ Add these to your `.env` file:
 
 | Variable            | Required | Description                                      |
 |---------------------|----------|--------------------------------------------------|
-| `ANTHROPIC_API_KEY` | Yes      | Your Anthropic API key                           |
-| `GITHUB_TOKEN`      | Yes*     | GitHub personal access token with `repo` scope. Required for Dev agent GitHub tools (read, write, push). |
+| `ANTHROPIC_API_KEY`    | Yes  | Your Anthropic API key                           |
+| `GITHUB_TOKEN`         | Yes* | GitHub personal access token with `repo` scope. Required for Dev agent GitHub tools (read, write, push). |
+| `SUPABASE_URL`         | Yes* | Supabase project URL, e.g. https://wplbnmwlnjelflzxcadl.supabase.co |
+| `SUPABASE_SERVICE_KEY` | Yes* | Supabase service role key (not the anon key). Required for persistent memory. Without it, falls back to in-memory store. |
 
 ## Running the server
 cd C:\Users\zzac0\AI-Agents
