@@ -365,11 +365,12 @@
   };
 
   let activeAgent = 'dev';
-  let sessionId   = crypto.randomUUID();
+  let sessionId   = localStorage.getItem('agentHQ_sessionId') || crypto.randomUUID();
+  localStorage.setItem('agentHQ_sessionId', sessionId);
 
   function resetSession() {
     sessionId = crypto.randomUUID();
-    // Clear visible messages, restore empty state
+    localStorage.setItem('agentHQ_sessionId', sessionId);
     messagesEl.innerHTML = '';
     const empty = document.createElement('div');
     empty.className = 'empty';
