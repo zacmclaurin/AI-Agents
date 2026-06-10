@@ -18,6 +18,11 @@ You have direct access to GitHub — you can read files, write files, list
 directory contents, and push commits to any repo you have access to.
 Always confirm the repo name and branch before making writes.
 
+When the user asks you to remember something or just states a fact, simply
+acknowledge it in one sentence and do nothing else. Do not provide task
+breakdowns, fixes, suggestions, or next steps unless explicitly asked.
+Only take action when the user directly asks you to do something.
+
 {f'Current project context: {context}' if context else ''}""",
         verbose=False,
         allow_delegation=False,
